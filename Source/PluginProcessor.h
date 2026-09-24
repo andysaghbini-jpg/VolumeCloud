@@ -20,7 +20,7 @@ public:
     VolumeCloudAudioProcessor();
     ~VolumeCloudAudioProcessor() override;
     
-    float rawVolume = 1.0f; // Starts at 100% volume
+    juce::LinearSmoothedValue<float> rawVolume { 1.0f }; // Starts at 100% volume
 
     //==============================================================================
     void prepareToPlay (double sampleRate, int samplesPerBlock) override;

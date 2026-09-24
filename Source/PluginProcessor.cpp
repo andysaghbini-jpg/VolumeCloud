@@ -95,6 +95,7 @@ void VolumeCloudAudioProcessor::prepareToPlay (double sampleRate, int samplesPer
 {
     // Use this method as the place to do any pre-playback
     // initialisation that you need..
+    rawVolume.reset (sampleRate, 0.05);
 }
 
 void VolumeCloudAudioProcessor::releaseResources()
@@ -150,15 +151,21 @@ void VolumeCloudAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, 
     // the samples and the outer loop is handling the channels.
     // Alternatively, you can process the samples with the channels
     // interleaved by keeping the same state.
-    for (int channel = 0; channel < totalNumInputChannels; ++channel)
-    {
-        auto* channelData = buffer.getWritePointer (channel);
 
-        // ..do something to the data...
-        for (int sample = 0; sample < buffer.getNumSamples(); ++sample) {
-            channelData[sample] = channelData[sample] * rawVolume;
+    if (rawVolume.isSmoothing()){
+        for (int sample = 0; sample < buffer.getNumSamples(); ++sample) { // Calculate the smooth ramp sample by sample
+            float currentVolume = rawVolume.getNextValue();
+            for (int channel = 0; channel < totalNumInputChannels; ++channel){
+                buffer.getWritePointer(channel)[sample] *= currentVolume;
+            }
         }
     }
+    else
+    {
+        buffer.applyGain (rawVolume.getCurrentValue());
+    }
+        
+    
 }
 
 //==============================================================================

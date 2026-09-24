@@ -28,7 +28,7 @@ VolumeCloudAudioProcessorEditor::VolumeCloudAudioProcessorEditor (VolumeCloudAud
     
     volumeSlider.setValue(1.0);
     addAndMakeVisible(&volumeSlider);
-    volumeSlider.onValueChange = [this] { audioProcessor.rawVolume = volumeSlider.getValue(); };
+    volumeSlider.onValueChange = [this] { audioProcessor.rawVolume.setTargetValue (volumeSlider.getValue()); };
 }
 
 VolumeCloudAudioProcessorEditor::~VolumeCloudAudioProcessorEditor()
