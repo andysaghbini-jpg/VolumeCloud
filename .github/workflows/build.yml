@@ -51,12 +51,10 @@ jobs:
         shell: pwsh
         run: |
           ./JUCE/Projucer.exe --resave VolumeCloud.jucer
-          msbuild "Builds/VisualStudio2022/VolumeCloud_SharedCode.vcxproj" /p:Configuration=Release /p:Platform=x64 /m
-          msbuild "Builds/VisualStudio2022/VolumeCloud_StandalonePlugin.vcxproj" /p:Configuration=Release /p:Platform=x64 /m
-          msbuild "Builds/VisualStudio2022/VolumeCloud_VST3.vcxproj" /p:Configuration=Release /p:Platform=x64 /m
+          msbuild "Builds/VisualStudio2022/VolumeCloud.sln" /p:Configuration=Release /p:Platform=x64 /m
           New-Item -ItemType Directory -Force -Path "release_pkg"
-          Copy-Item "Builds/VisualStudio2022/x64/Release/Standalone Plugin/VolumeCloud.exe" -Destination "release_pkg/"
-          Copy-Item "Builds/VisualStudio2022/x64/Release/VST3/VolumeCloud.vst3" -Destination "release_pkg/" -Recurse
+          Get-ChildItem -Path "Builds/VisualStudio2022" -Filter "VolumeCloud.exe" -Recurse | Copy-Item -Destination "release_pkg/" -Force
+          Get-ChildItem -Path "Builds/VisualStudio2022" -Filter "VolumeCloud.vst3" -Recurse -Directory | Copy-Item -Destination "release_pkg/" -Recurse -Force
           Compress-Archive -Path "release_pkg/*" -DestinationPath "VolumeCloud-Windows-x64.zip"
       - name: Upload Windows Zip
         uses: actions/upload-artifact@v4
