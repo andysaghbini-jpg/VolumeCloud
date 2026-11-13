@@ -2,6 +2,8 @@
 
 A lightweight, cross-platform digital audio gain plugin built in C++17 with the **JUCE 8** framework. Designed with sample-accurate parameter smoothing and a custom procedural vector graphics pipeline.
 
+<img src="./docs/UI.png" alt="VolumeCloud UI" width="440">
+
 ## Download & Installation (macOS / Windows / Linux)
 Pre-compiled binaries for all platforms are available on the **[Latest Release](../../releases/latest)** page:
 
@@ -20,7 +22,7 @@ Pre-compiled binaries for all platforms are available on the **[Latest Release](
 
 ## Key Engineering Features
 - **Zero-Zipper Gain DSP:** Implements sample-accurate linear interpolation (`juce::LinearSmoothedValue`) with a 50ms ramp to eliminate discontinuity artifacts during rapid gain changes, automatically bypassing per-sample loops when static for optimal CPU efficiency.
-- **Custom Vector UI (`juce::LookAndFeel_V4`):** Custom procedural Bezier cloud slider thumb, frosted glass track rendering, and dynamic multi-stop gradient shading with zero external image dependencies.
+- **Custom Vector UI (`juce::LookAndFeel_V4`):** Custom procedural cloud slider thumb, frosted glass track rendering, and dynamic multi-stop gradient shading with zero external image dependencies.
 - **Logarithmic Decibel Mapping:** Converts linear amplitude multipliers (`0.0` to `2.0`) to decibel readouts (`-inf dB` to `+6.0 dB`).
 - **Binary State Serialization:** Persists parameter state across editor lifecycles and DAW project saves via `MemoryOutputStream` and `MemoryInputStream`.
 - **Automated Cross-Platform CI/CD:** Uses GitHub Actions to automatically compile native **AU**, **VST3**, and **Standalone** binaries across **macOS**, **Windows (MSVC)**, and **Linux (GCC/Make)**.
