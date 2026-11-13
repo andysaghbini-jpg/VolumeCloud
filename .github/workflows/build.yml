@@ -19,8 +19,18 @@ jobs:
         run: |
           curl -L https://github.com/juce-framework/JUCE/releases/download/8.0.4/juce-8.0.4-osx.zip -o juce.zip
           unzip -q juce.zip
-      - name: Build macOS Targets
+      - name: Patch Jucer Paths & Build macOS Targets
         run: |
+          python3 -c '
+          import xml.etree.ElementTree as ET
+          tree = ET.parse("VolumeCloud.jucer")
+          root = tree.getroot()
+          for mod in root.findall(".//MODULE"):
+              mod.set("useGlobalPath", "1")
+          for mp in root.findall(".//MODULEPATH"):
+              mp.set("path", "./JUCE/modules")
+          tree.write("VolumeCloud.jucer")
+          '
           ./JUCE/Projucer.app/Contents/MacOS/Projucer --set-global-search-path osx defaultJuceModulePath "$(pwd)/JUCE/modules"
           ./JUCE/Projucer.app/Contents/MacOS/Projucer --resave VolumeCloud.jucer
           xcodebuild -project Builds/MacOSX/VolumeCloud.xcodeproj -scheme "VolumeCloud - All" -configuration Release build CODE_SIGNING_ALLOWED=NO
@@ -43,14 +53,31 @@ jobs:
           Expand-Archive -Path "juce.zip" -DestinationPath "."
       - name: Setup MSBuild
         uses: microsoft/setup-msbuild@v2
-      - name: Build Windows Targets
+      - name: Patch Jucer & Build Windows Targets
         shell: pwsh
         run: |
+          python -c "
+          import xml.etree.ElementTree as ET
+          tree = ET.parse('VolumeCloud.jucer')
+          root = tree.getroot()
+          for mod in root.findall('.//MODULE'):
+              mod.set('useGlobalPath', '1')
+          exporters = root.find('EXPORTFORMATS')
+          if exporters.find('VS2022') is None:
+              vs = ET.SubElement(exporters, 'VS2022', targetFolder='Builds/VisualStudio2022')
+              cfgs = ET.SubElement(vs, 'CONFIGURATIONS')
+              ET.SubElement(cfgs, 'CONFIGURATION', isDebug='1', name='Debug')
+              ET.SubElement(cfgs, 'CONFIGURATION', isDebug='0', name='Release')
+              mps = ET.SubElement(vs, 'MODULEPATHS')
+              for m in root.findall('.//MODULE'):
+                  ET.SubElement(mps, 'MODULEPATH', id=m.get('id'), path='./JUCE/modules')
+          tree.write('VolumeCloud.jucer')
+          "
           ./JUCE/Projucer.exe --set-global-search-path windows defaultJuceModulePath "$PWD\JUCE\modules"
           ./JUCE/Projucer.exe --resave VolumeCloud.jucer
           msbuild Builds/VisualStudio2022/VolumeCloud.sln /p:Configuration=Release /p:Platform=x64 /m
           mkdir release_pkg
-          Copy-Item "Builds/VisualStudio2022/x64/Release/Standalone Plugin/VolumeCloud.exe" -Destination "release_pkg/"
+          Copy-Item "Builds/VisualStudio2022/x64/Release/Standalone Plugin/VolumeCloud.exe" -Destination "release_pkg/" -ErrorAction SilentlyContinue
           Copy-Item "Builds/VisualStudio2022/x64/Release/VST3/VolumeCloud.vst3" -Destination "release_pkg/" -Recurse
           Compress-Archive -Path "release_pkg/*" -DestinationPath "VolumeCloud-Windows-x64.zip"
       - name: Upload Windows Zip
@@ -66,17 +93,34 @@ jobs:
       - name: Install Linux Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libasound2-dev libjack-jackd2-dev ladspa-sdk libcurl4-openssl-dev \
+          sudo apt-get install -y xvfb libasound2-dev libjack-jackd2-dev ladspa-sdk libcurl4-openssl-dev \
             libfreetype6-dev libx11-dev libxcomposite-dev libxcursor-dev libxext-dev \
             libxinerama-dev libxrandr-dev libxrender-dev libwebkit2gtk-4.1-dev libglu1-mesa-dev
       - name: Download JUCE 8
         run: |
           curl -L https://github.com/juce-framework/JUCE/releases/download/8.0.4/juce-8.0.4-linux.zip -o juce.zip
           unzip -q juce.zip
-      - name: Build Linux Targets
+      - name: Patch Jucer & Build Linux Targets
         run: |
-          ./JUCE/Projucer --set-global-search-path linux defaultJuceModulePath "$(pwd)/JUCE/modules"
-          ./JUCE/Projucer --resave VolumeCloud.jucer
+          python3 -c '
+          import xml.etree.ElementTree as ET
+          tree = ET.parse("VolumeCloud.jucer")
+          root = tree.getroot()
+          for mod in root.findall(".//MODULE"):
+              mod.set("useGlobalPath", "1")
+          exporters = root.find("EXPORTFORMATS")
+          if exporters.find("LINUX_MAKE") is None:
+              lnx = ET.SubElement(exporters, "LINUX_MAKE", targetFolder="Builds/LinuxMakefile")
+              cfgs = ET.SubElement(lnx, "CONFIGURATIONS")
+              ET.SubElement(cfgs, "CONFIGURATION", isDebug="1", name="Debug")
+              ET.SubElement(cfgs, "CONFIGURATION", isDebug="0", name="Release")
+              mps = ET.SubElement(lnx, "MODULEPATHS")
+              for m in root.findall(".//MODULE"):
+                  ET.SubElement(mps, "MODULEPATH", id=m.get("id"), path="./JUCE/modules")
+          tree.write("VolumeCloud.jucer")
+          '
+          xvfb-run -a ./JUCE/Projucer --set-global-search-path linux defaultJuceModulePath "$(pwd)/JUCE/modules"
+          xvfb-run -a ./JUCE/Projucer --resave VolumeCloud.jucer
           make -C Builds/LinuxMakefile CONFIG=Release -j$(nproc)
           cd Builds/LinuxMakefile/build
           zip -r ../../../VolumeCloud-Linux-x64.zip VolumeCloud VolumeCloud.vst3
