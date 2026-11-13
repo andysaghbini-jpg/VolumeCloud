@@ -1,0 +1,106 @@
+name: Build & Release Cross-Platform Plugin
+
+on:
+  push:
+    branches: [ main, master ]
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download JUCE 8
+        run: |
+          curl -L https://github.com/juce-framework/JUCE/releases/download/8.0.4/juce-8.0.4-osx.zip -o juce.zip
+          unzip -q juce.zip
+      - name: Build macOS Targets
+        run: |
+          ./JUCE/Projucer.app/Contents/MacOS/Projucer --set-global-search-path osx defaultJuceModulePath "$(pwd)/JUCE/modules"
+          ./JUCE/Projucer.app/Contents/MacOS/Projucer --resave VolumeCloud.jucer
+          xcodebuild -project Builds/MacOSX/VolumeCloud.xcodeproj -scheme "VolumeCloud - All" -configuration Release build CODE_SIGNING_ALLOWED=NO
+          cd Builds/MacOSX/build/Release
+          zip -r ../../../../VolumeCloud-macOS.zip VolumeCloud.app VolumeCloud.component VolumeCloud.vst3
+      - name: Upload macOS Zip
+        uses: actions/upload-artifact@v4
+        with:
+          name: VolumeCloud-macOS
+          path: VolumeCloud-macOS.zip
+
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download JUCE 8
+        shell: pwsh
+        run: |
+          Invoke-WebRequest -Uri "https://github.com/juce-framework/JUCE/releases/download/8.0.4/juce-8.0.4-windows.zip" -OutFile "juce.zip"
+          Expand-Archive -Path "juce.zip" -DestinationPath "."
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
+      - name: Build Windows Targets
+        shell: pwsh
+        run: |
+          ./JUCE/Projucer.exe --set-global-search-path windows defaultJuceModulePath "$PWD\JUCE\modules"
+          ./JUCE/Projucer.exe --resave VolumeCloud.jucer
+          msbuild Builds/VisualStudio2022/VolumeCloud.sln /p:Configuration=Release /p:Platform=x64 /m
+          mkdir release_pkg
+          Copy-Item "Builds/VisualStudio2022/x64/Release/Standalone Plugin/VolumeCloud.exe" -Destination "release_pkg/"
+          Copy-Item "Builds/VisualStudio2022/x64/Release/VST3/VolumeCloud.vst3" -Destination "release_pkg/" -Recurse
+          Compress-Archive -Path "release_pkg/*" -DestinationPath "VolumeCloud-Windows-x64.zip"
+      - name: Upload Windows Zip
+        uses: actions/upload-artifact@v4
+        with:
+          name: VolumeCloud-Windows-x64
+          path: VolumeCloud-Windows-x64.zip
+
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Linux Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libasound2-dev libjack-jackd2-dev ladspa-sdk libcurl4-openssl-dev \
+            libfreetype6-dev libx11-dev libxcomposite-dev libxcursor-dev libxext-dev \
+            libxinerama-dev libxrandr-dev libxrender-dev libwebkit2gtk-4.1-dev libglu1-mesa-dev
+      - name: Download JUCE 8
+        run: |
+          curl -L https://github.com/juce-framework/JUCE/releases/download/8.0.4/juce-8.0.4-linux.zip -o juce.zip
+          unzip -q juce.zip
+      - name: Build Linux Targets
+        run: |
+          ./JUCE/Projucer --set-global-search-path linux defaultJuceModulePath "$(pwd)/JUCE/modules"
+          ./JUCE/Projucer --resave VolumeCloud.jucer
+          make -C Builds/LinuxMakefile CONFIG=Release -j$(nproc)
+          cd Builds/LinuxMakefile/build
+          zip -r ../../../VolumeCloud-Linux-x64.zip VolumeCloud VolumeCloud.vst3
+      - name: Upload Linux Zip
+        uses: actions/upload-artifact@v4
+        with:
+          name: VolumeCloud-Linux-x64
+          path: VolumeCloud-Linux-x64.zip
+
+  release:
+    needs: [build-macos, build-windows, build-linux]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download All Built Zips
+        uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "VolumeCloud ${{ github.ref_name }}"
+          body: "Automated cross-platform release of VolumeCloud (AU, VST3, Standalone) for macOS, Windows, and Linux."
+          files: |
+            VolumeCloud-macOS.zip
+            VolumeCloud-Windows-x64.zip
+            VolumeCloud-Linux-x64.zip
