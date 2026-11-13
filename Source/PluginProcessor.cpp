@@ -1,15 +1,6 @@
-/*
-  ==============================================================================
-
-    This file contains the basic framework code for a JUCE plugin processor.
-
-  ==============================================================================
-*/
-
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
 
-//==============================================================================
 VolumeCloudAudioProcessor::VolumeCloudAudioProcessor()
 #ifndef JucePlugin_PreferredChannelConfigurations
      : AudioProcessor (BusesProperties()
@@ -28,7 +19,6 @@ VolumeCloudAudioProcessor::~VolumeCloudAudioProcessor()
 {
 }
 
-//==============================================================================
 const juce::String VolumeCloudAudioProcessor::getName() const
 {
     return JucePlugin_Name;
@@ -68,8 +58,7 @@ double VolumeCloudAudioProcessor::getTailLengthSeconds() const
 
 int VolumeCloudAudioProcessor::getNumPrograms()
 {
-    return 1;   // NB: some hosts don't cope very well if you tell them there are 0 programs,
-                // so this should be at least 1, even if you're not really implementing programs.
+    return 1;
 }
 
 int VolumeCloudAudioProcessor::getCurrentProgram()
@@ -79,29 +68,30 @@ int VolumeCloudAudioProcessor::getCurrentProgram()
 
 void VolumeCloudAudioProcessor::setCurrentProgram (int index)
 {
+    juce::ignoreUnused (index);
 }
 
 const juce::String VolumeCloudAudioProcessor::getProgramName (int index)
 {
+    juce::ignoreUnused (index);
     return {};
 }
 
 void VolumeCloudAudioProcessor::changeProgramName (int index, const juce::String& newName)
 {
+    juce::ignoreUnused (index, newName);
 }
 
-//==============================================================================
 void VolumeCloudAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
-    // Use this method as the place to do any pre-playback
-    // initialisation that you need..
+    juce::ignoreUnused (samplesPerBlock);
+    // 50ms linear ramp for smooth, click-free volume transitions
     rawVolume.reset (sampleRate, 0.05);
+    rawVolume.setCurrentAndTargetValue (targetVolume);
 }
 
 void VolumeCloudAudioProcessor::releaseResources()
 {
-    // When playback stops, you can use this as an opportunity to free up any
-    // spare memory, etc.
 }
 
 #ifndef JucePlugin_PreferredChannelConfigurations
@@ -111,15 +101,10 @@ bool VolumeCloudAudioProcessor::isBusesLayoutSupported (const BusesLayout& layou
     juce::ignoreUnused (layouts);
     return true;
   #else
-    // This is the place where you check if the layout is supported.
-    // In this template code we only support mono or stereo.
-    // Some plugin hosts, such as certain GarageBand versions, will only
-    // load plugins that support stereo bus layouts.
     if (layouts.getMainOutputChannelSet() != juce::AudioChannelSet::mono()
      && layouts.getMainOutputChannelSet() != juce::AudioChannelSet::stereo())
         return false;
 
-    // This checks if the input layout matches the output layout
    #if ! JucePlugin_IsSynth
     if (layouts.getMainOutputChannelSet() != layouts.getMainInputChannelSet())
         return false;
@@ -132,31 +117,23 @@ bool VolumeCloudAudioProcessor::isBusesLayoutSupported (const BusesLayout& layou
 
 void VolumeCloudAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages)
 {
+    juce::ignoreUnused (midiMessages);
     juce::ScopedNoDenormals noDenormals;
     auto totalNumInputChannels  = getTotalNumInputChannels();
     auto totalNumOutputChannels = getTotalNumOutputChannels();
 
-    // In case we have more outputs than inputs, this code clears any output
-    // channels that didn't contain input data, (because these aren't
-    // guaranteed to be empty - they may contain garbage).
-    // This is here to avoid people getting screaming feedback
-    // when they first compile a plugin, but obviously you don't need to keep
-    // this code if your algorithm always overwrites all the output channels.
     for (auto i = totalNumInputChannels; i < totalNumOutputChannels; ++i)
         buffer.clear (i, 0, buffer.getNumSamples());
 
-    // This is the place where you'd normally do the guts of your plugin's
-    // audio processing...
-    // Make sure to reset the state if your inner loop is processing
-    // the samples and the outer loop is handling the channels.
-    // Alternatively, you can process the samples with the channels
-    // interleaved by keeping the same state.
+    if (rawVolume.isSmoothing())
+    {
+        for (int sample = 0; sample < buffer.getNumSamples(); ++sample)
+        {
+            const float currentVolume = rawVolume.getNextValue();
 
-    if (rawVolume.isSmoothing()){
-        for (int sample = 0; sample < buffer.getNumSamples(); ++sample) { // Calculate the smooth ramp sample by sample
-            float currentVolume = rawVolume.getNextValue();
-            for (int channel = 0; channel < totalNumInputChannels; ++channel){
-                buffer.getWritePointer(channel)[sample] *= currentVolume;
+            for (int channel = 0; channel < totalNumInputChannels; ++channel)
+            {
+                buffer.getWritePointer (channel)[sample] *= currentVolume;
             }
         }
     }
@@ -164,14 +141,11 @@ void VolumeCloudAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, 
     {
         buffer.applyGain (rawVolume.getCurrentValue());
     }
-        
-    
 }
 
-//==============================================================================
 bool VolumeCloudAudioProcessor::hasEditor() const
 {
-    return true; // (change this to false if you choose to not supply an editor)
+    return true;
 }
 
 juce::AudioProcessorEditor* VolumeCloudAudioProcessor::createEditor()
@@ -179,22 +153,24 @@ juce::AudioProcessorEditor* VolumeCloudAudioProcessor::createEditor()
     return new VolumeCloudAudioProcessorEditor (*this);
 }
 
-//==============================================================================
 void VolumeCloudAudioProcessor::getStateInformation (juce::MemoryBlock& destData)
 {
-    // You should use this method to store your parameters in the memory block.
-    // You could do that either as raw data, or use the XML or ValueTree classes
-    // as intermediaries to make it easy to save and load complex data.
+    // Save the current targetVolume when the DAW saves the project
+    juce::MemoryOutputStream stream (destData, true);
+    stream.writeFloat (targetVolume);
 }
 
 void VolumeCloudAudioProcessor::setStateInformation (const void* data, int sizeInBytes)
 {
-    // You should use this method to restore your parameters from this memory block,
-    // whose contents will have been created by the getStateInformation() call.
+    // Restore the saved volume when reopening the DAW project
+    juce::MemoryInputStream stream (data, static_cast<size_t> (sizeInBytes), false);
+    if (stream.getNumBytesRemaining() >= sizeof (float))
+    {
+        targetVolume = stream.readFloat();
+        rawVolume.setCurrentAndTargetValue (targetVolume);
+    }
 }
 
-//==============================================================================
-// This creates new instances of the plugin..
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()
 {
     return new VolumeCloudAudioProcessor();
